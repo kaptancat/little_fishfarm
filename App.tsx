@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { useCityState } from './hooks/useCityState';
 import { Dashboard } from './components/Dashboard';
@@ -9,13 +10,8 @@ import { MarsJourney } from './components/MarsJourney';
 import { MarketModal } from './components/MarketModal';
 import { DemolitionView } from './components/DemolitionView';
 import { MainMenu } from './components/MainMenu';
-import { AdMobOverlay } from './components/AdMobOverlay'; // Import Ad Component
 import { BuildingSlot, BuildingStatus, Language, TRANSLATIONS, Planet, STYLES_CONFIG, MARS_STYLES_CONFIG, VENUS_STYLES_CONFIG, JUPITER_STYLES_CONFIG, SATURN_STYLES_CONFIG, URANUS_STYLES_CONFIG, NEPTUNE_STYLES_CONFIG, MERCURY_STYLES_CONFIG } from './types';
 import { audioService } from './services/audioService';
-
-// ADMOB CONFIGURATION
-const ADMOB_PUB_ID = "ca-app-pub-1915886199506068";
-const ADMOB_SLOT_ID = "5571404762";
 
 const App: React.FC = () => {
   const { 
@@ -27,31 +23,12 @@ const App: React.FC = () => {
   } = useCityState();
 
   const [view, setView] = useState<'MENU' | 'DASHBOARD' | 'GAME' | 'DEMOLITION' | 'JOURNEY'>('MENU');
-  const [gameMode, setGameMode] = useState<'BUILD' | 'LAUNCH' | 'LANDING'>('BUILD');
   const [currentPlanet, setCurrentPlanet] = useState<Planet>('EARTH');
   const [activeSlotIndex, setActiveSlotIndex] = useState<number>(-1);
   const [buildingToDemolish, setBuildingToDemolish] = useState<BuildingSlot | null>(null);
   const [showMarket, setShowMarket] = useState(false);
-  
-  // AD STATE
-  const [showAd, setShowAd] = useState(false);
-  const [pendingAdAction, setPendingAdAction] = useState<(() => void) | null>(null);
-
-  // Load Language from LocalStorage or default to TR
-  const [lang, setLang] = useState<Language>(() => {
-      const saved = localStorage.getItem('grandCityLang');
-      return (saved as Language) || 'TR';
-  });
-  
+  const [lang, setLang] = useState<Language>('TR');
   const [isMuted, setIsMuted] = useState(false);
-  
-  // State to hold the target planet during the landing sequence
-  const [landingTarget, setLandingTarget] = useState<Planet>('MARS');
-
-  // Persist Language Selection
-  useEffect(() => {
-      localStorage.setItem('grandCityLang', lang);
-  }, [lang]);
 
   const t = TRANSLATIONS[lang];
 
@@ -88,19 +65,17 @@ const App: React.FC = () => {
   };
 
   const handleLaunchRocket = () => {
-      // Switch to Game View in LAUNCH mode
-      setGameMode('LAUNCH');
-      setView('GAME');
+      launchRocket();
   };
 
   const handleOpenJourney = () => {
       setView('JOURNEY');
   };
 
-  const handleStartLanding = () => {
+  const handleLand = () => {
       let target: Planet = 'MARS';
       
-      // Logic to determine target based on unlocks
+      // Admin Mode: Target selection logic or default sequence
       if (adminMode) {
           if (!meta.marsUnlocked) target = 'MARS';
           else if (!meta.venusUnlocked) target = 'VENUS';
@@ -109,28 +84,30 @@ const App: React.FC = () => {
           else if (!meta.saturnUnlocked) target = 'SATURN';
           else if (!meta.uranusUnlocked) target = 'URANUS';
           else if (!meta.neptuneUnlocked) target = 'NEPTUNE';
-          else target = 'NEPTUNE'; 
+          else target = 'NEPTUNE'; // End game
       } else {
+          // Normal Progression
           if (meta.rocket.stage >= 6) {
+             // Shuttle Logic
              if (!meta.jupiterUnlocked) target = 'JUPITER';
              else if (!meta.saturnUnlocked) target = 'SATURN';
              else if (!meta.uranusUnlocked) target = 'URANUS';
              else target = 'NEPTUNE';
           } else {
+             // Basic Rocket Logic
              if (!meta.marsUnlocked) target = 'MARS';
              else if (!meta.venusUnlocked) target = 'VENUS';
              else target = 'MERCURY';
           }
       }
 
-      setLandingTarget(target);
-      setGameMode('LANDING');
-      setView('GAME');
+      unlockPlanet(target);
+      handlePlanetSwitch(target);
+      setView('DASHBOARD');
   };
 
   const handleBuildRequest = (index: number) => {
     setActiveSlotIndex(index);
-    setGameMode('BUILD');
     setView('GAME');
   };
   
@@ -161,84 +138,23 @@ const App: React.FC = () => {
     setBuildingToDemolish(null);
   };
 
-  // Helper to trigger Ad
-  const triggerAd = (nextAction: () => void) => {
-      setPendingAdAction(() => nextAction);
-      setShowAd(true);
-  };
-
-  const handleAdClose = () => {
-      setShowAd(false);
-      if (pendingAdAction) {
-          pendingAdAction();
-          setPendingAdAction(null);
-      }
-  };
-
-  const handleGameClose = (result?: { floors: number; pop: number; type: 'RENT' | 'SELL' } | 'LAUNCH_COMPLETE' | 'LANDING_COMPLETE' | 'LAUNCH_FAILED' | 'CONSUME_AUTOPILOT') => {
-    // 1. ROCKET LAUNCH (Level Up to Space)
-    if (result === 'LAUNCH_COMPLETE') {
-        triggerAd(() => {
-            launchRocket(); 
-            setView('JOURNEY');
-        });
-        return;
-    }
-
-    // 2. LANDING SUCCESS (Level Up to New Planet)
-    if (result === 'LANDING_COMPLETE') {
-        triggerAd(() => {
-            unlockPlanet(landingTarget);
-            handlePlanetSwitch(landingTarget);
-            setView('DASHBOARD');
-        });
-        return;
-    }
-
-    // 3. LAUNCH FAILED
-    if (result === 'LAUNCH_FAILED') {
-        setView('DASHBOARD');
-        return;
-    }
-
-    // 4. AUTOPILOT CONSUME
-    if (result === 'CONSUME_AUTOPILOT') {
-        // Just consume charge, game stays active
-        meta.autoPilotCharges = Math.max(0, (meta.autoPilotCharges || 0) - 1);
-        return; 
-    }
-
-    // 5. BUILDING COMPLETED (Level Up Floors)
-    if (result && activeSlotIndex !== -1 && typeof result !== 'string') {
-      const finishLogic = () => {
-          if (result.type === 'SELL') {
-            const cashEarned = (result.floors * 150) + (result.pop * 50);
-            updateCash(Math.floor(cashEarned));
-          } else {
-            const newBuilding: BuildingSlot = {
-              id: Math.random().toString(36).substr(2, 9),
-              floors: result.floors,
-              pop: result.pop,
-              status: BuildingStatus.RENTED,
-              styleId: meta.activeStyleId,
-              timestamp: Date.now()
-            };
-            addBuilding(activeSlotIndex, newBuilding, currentPlanet);
-          }
-          setView('DASHBOARD');
-          setActiveSlotIndex(-1);
-      };
-
-      // Show AD if floors > 10 (Significant progress)
-      if (result.floors >= 10) {
-          triggerAd(finishLogic);
+  const handleGameClose = (result?: { floors: number; pop: number; type: 'RENT' | 'SELL' }) => {
+    if (result && activeSlotIndex !== -1) {
+      if (result.type === 'SELL') {
+        const cashEarned = (result.floors * 150) + (result.pop * 50);
+        updateCash(Math.floor(cashEarned));
       } else {
-          finishLogic();
+        const newBuilding: BuildingSlot = {
+          id: Math.random().toString(36).substr(2, 9),
+          floors: result.floors,
+          pop: result.pop,
+          status: BuildingStatus.RENTED,
+          styleId: meta.activeStyleId,
+          timestamp: Date.now()
+        };
+        addBuilding(activeSlotIndex, newBuilding, currentPlanet);
       }
-      return;
     }
-
-    // Default Cancel / Exit
     setView('DASHBOARD');
     setActiveSlotIndex(-1);
   };
@@ -252,7 +168,7 @@ const App: React.FC = () => {
   if (currentPlanet === 'URANUS') currentCityData = uranusData;
   if (currentPlanet === 'NEPTUNE') currentCityData = neptuneData;
 
-  // Determine Journey Target for Journey Screen
+  // Determine Journey Target
   let journeyTarget: Planet = 'MARS';
   if (meta.rocket.stage >= 6) {
       if (!meta.jupiterUnlocked) journeyTarget = 'JUPITER';
@@ -266,17 +182,8 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="relative w-full h-[100dvh] overflow-hidden text-slate-100 select-none font-sans">
+    <div className="relative w-full h-screen overflow-hidden text-slate-100 select-none font-sans">
       
-      {/* ADMOB OVERLAY */}
-      {showAd && (
-          <AdMobOverlay 
-              onClose={handleAdClose} 
-              publisherId={ADMOB_PUB_ID}
-              slotId={ADMOB_SLOT_ID}
-          />
-      )}
-
       {currentPlanet === 'EARTH' ? (
           <CityBackground season={meta.currentSeason || 'SPRING'} />
       ) : (
@@ -337,9 +244,8 @@ const App: React.FC = () => {
       {view === 'JOURNEY' && (
           <MarsJourney 
             launchTime={meta.rocket.launchTime || 0} 
-            sourcePlanet={currentPlanet} // Pass current planet as source
             targetPlanet={journeyTarget}
-            onLand={handleStartLanding}
+            onLand={handleLand}
             t={t}
             isAdmin={adminMode}
           />
@@ -348,11 +254,8 @@ const App: React.FC = () => {
       {view === 'GAME' && (
         <GameCanvas 
             meta={meta}
-            // If Landing, use the target planet physics/visuals. If Launching/Building, use current.
-            planet={gameMode === 'LANDING' ? landingTarget : currentPlanet}
-            mode={gameMode}
+            planet={currentPlanet}
             onClose={handleGameClose}
-            onPenalty={(amount) => updateCash(-amount)}
             t={t}
         />
       )}
