@@ -2,169 +2,36 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import IntroSequence from './components/IntroSequence';
 import Aquarium from './components/Aquarium';
-import Showroom from './components/Showroom';
-import { AppState, GamePhase, FishState, Task, FishType, Gender, LifeStage } from './types';
-import { Sun, ShoppingBag, Activity, Droplets, Thermometer, Wind, FlaskConical, Pill, Volume2, VolumeX, Eraser, Diamond, Coins, DollarSign, Clock, Car } from 'lucide-react';
+import Showroom from './components/Showroom'; 
+import Shop3D from './components/Shop3D'; 
+import FishingGame from './components/FishingGame';
+import { AppState, GamePhase, FishState, Task, LifeStage, SpeciesInfo } from './types';
+import { ShoppingBag, Activity, Droplets, Thermometer, Wind, FlaskConical, Pill, Volume2, VolumeX, Eraser, Diamond, Coins, DollarSign, Clock, Baby, Trophy, Save, RotateCcw } from 'lucide-react';
 import { getFishThoughts } from './services/geminiService';
 import { audioManager } from './services/audioService';
+
+// Data Imports
+import { SPECIES_DB } from './data/species';
+import { STANDARD_ITEMS } from './data/shopItems';
+import { generateTasks, spawnFish, spawnEgg } from './utils/gameHelpers';
 
 // Constants
 const INITIAL_MONEY = 150;
 const INITIAL_GEMS = 5;
-
-const TASKS: Task[] = [
-  { id: 't1', description: 'Balıkları besle (5 kez)', current: 0, target: 5, reward: 50, completed: false },
-  { id: 't2', description: 'Su değerlerini dengele', current: 0, target: 1, reward: 100, completed: false },
-  { id: 't3', description: 'Yosunları temizle', current: 0, target: 1, reward: 30, gemReward: 1, completed: false },
-];
-
-// --- STANDARD SHOP ---
-const STANDARD_ITEMS = [
-  // Basics
-  { id: 'fish_gold_m', name: 'Japon Balığı (E)', price: 80, currency: 'coin', type: 'fish', species: 'goldfish', gender: 'M', color: '#FFA500' },
-  { id: 'fish_gold_f', name: 'Japon Balığı (D)', price: 80, currency: 'coin', type: 'fish', species: 'goldfish', gender: 'F', color: '#FF8C00' },
-  { id: 'plant_fern', name: 'Java Fern', price: 60, currency: 'coin', type: 'plant', visual: 'fern' },
-  { id: 'decor_rock', name: 'Kaya', price: 80, currency: 'coin', type: 'decoration', visual: 'rock' },
-  
-  // Equipment Upgrades
-  { id: 'eq_filter_2', name: 'Şelale Filtre (Lv2)', price: 500, currency: 'coin', type: 'equipment', subtype: 'filter', level: 2 },
-  { id: 'eq_filter_3', name: 'Dış Filtre (Lv3)', price: 1200, currency: 'coin', type: 'equipment', subtype: 'filter', level: 3 },
-  { id: 'eq_heater', name: 'Isıtıcı', price: 300, currency: 'coin', type: 'equipment', subtype: 'heater' },
-  { id: 'eq_airstone', name: 'Hava Taşı', price: 250, currency: 'coin', type: 'equipment', subtype: 'airstone' },
-  { id: 'eq_light_2', name: 'LED Işık (Lv2)', price: 400, currency: 'coin', type: 'equipment', subtype: 'light', level: 2 },
-  { id: 'eq_light_3', name: 'Full Spektrum (Lv3)', price: 15, currency: 'gem', type: 'equipment', subtype: 'light', level: 3 },
-  { id: 'eq_co2', name: 'CO2 Sistemi', price: 25, currency: 'gem', type: 'equipment', subtype: 'co2' },
-  { id: 'supply_medicine', name: 'İlaç', price: 50, currency: 'coin', type: 'supply', visual: 'medicine' },
-];
-
-// --- WHOLESALE SHOWROOM LIST ---
-const WHOLESALE_ITEMS = [
-    // --- SMALL PEACEFUL ---
-    { id: 'w_guppy', name: 'Guppy (Lepistes)', price: 40, currency: 'coin', type: 'fish', species: 'guppy', gender: 'M', color: '#8A2BE2', category: 'peaceful' },
-    { id: 'w_endler', name: 'Endler', price: 45, currency: 'coin', type: 'fish', species: 'endler', gender: 'M', color: '#FF4500', category: 'peaceful' },
-    { id: 'w_platy', name: 'Platy', price: 50, currency: 'coin', type: 'fish', species: 'platy', gender: 'F', color: '#FF6347', category: 'peaceful' },
-    { id: 'w_molly', name: 'Molly', price: 50, currency: 'coin', type: 'fish', species: 'molly', gender: 'M', color: '#111111', category: 'peaceful' },
-    { id: 'w_neon', name: 'Neon Tetra', price: 35, currency: 'coin', type: 'fish', species: 'neon', gender: 'M', color: '#0000CD', category: 'peaceful' },
-    { id: 'w_cardinal', name: 'Kardinal Tetra', price: 45, currency: 'coin', type: 'fish', species: 'cardinal_tetra', gender: 'M', color: '#DC143C', category: 'peaceful' },
-    { id: 'w_ember', name: 'Ember Tetra', price: 40, currency: 'coin', type: 'fish', species: 'ember_tetra', gender: 'M', color: '#FF8C00', category: 'peaceful' },
-    { id: 'w_zebra', name: 'Zebra Danio', price: 30, currency: 'coin', type: 'fish', species: 'zebra_danio', gender: 'M', color: '#E0FFFF', category: 'peaceful' },
-    { id: 'w_rasbora', name: 'Rasbora', price: 35, currency: 'coin', type: 'fish', species: 'rasbora', gender: 'M', color: '#FF7F50', category: 'peaceful' },
-    { id: 'w_whitecloud', name: 'White Cloud', price: 30, currency: 'coin', type: 'fish', species: 'white_cloud', gender: 'M', color: '#F0F8FF', category: 'peaceful' },
-
-    // --- CICHLIDS ---
-    { id: 'w_discus', name: 'Discus', price: 250, currency: 'coin', type: 'fish', species: 'discus', gender: 'M', color: '#20B2AA', category: 'cichlid' },
-    { id: 'w_angel', name: 'Melek (Angelfish)', price: 120, currency: 'coin', type: 'fish', species: 'angelfish', gender: 'M', color: '#D3D3D3', category: 'cichlid' },
-    { id: 'w_oscar', name: 'Oscar', price: 180, currency: 'coin', type: 'fish', species: 'oscar', gender: 'M', color: '#8B4513', category: 'cichlid' },
-    { id: 'w_ramirezi', name: 'Ramirezi', price: 150, currency: 'coin', type: 'fish', species: 'ramirezi', gender: 'M', color: '#FFD700', category: 'cichlid' },
-    { id: 'w_malawi', name: 'Malawi Cichlid', price: 100, currency: 'coin', type: 'fish', species: 'malawi', gender: 'M', color: '#4169E1', category: 'cichlid' },
-    { id: 'w_tanganyika', name: 'Tanganyika', price: 110, currency: 'coin', type: 'fish', species: 'tanganyika', gender: 'M', color: '#A9A9A9', category: 'cichlid' },
-    { id: 'w_kribensis', name: 'Kribensis', price: 90, currency: 'coin', type: 'fish', species: 'kribensis', gender: 'M', color: '#DB7093', category: 'cichlid' },
-
-    // --- BOTTOM DWELLERS ---
-    { id: 'w_cory', name: 'Corydoras', price: 60, currency: 'coin', type: 'fish', species: 'corydoras', gender: 'M', color: '#F5DEB3', category: 'bottom' },
-    { id: 'w_pleco', name: 'Vatoz (Pleco)', price: 80, currency: 'coin', type: 'fish', species: 'pleco', gender: 'M', color: '#2F4F4F', category: 'bottom' },
-    { id: 'w_oto', name: 'Otocinclus', price: 70, currency: 'coin', type: 'fish', species: 'otocinclus', gender: 'M', color: '#708090', category: 'bottom' },
-    { id: 'w_loach', name: 'Kuhli Loach', price: 65, currency: 'coin', type: 'fish', species: 'loach', gender: 'M', color: '#FFA07A', category: 'bottom' },
-    { id: 'w_catfish', name: 'Yayın Balığı', price: 200, currency: 'coin', type: 'fish', species: 'catfish', gender: 'M', color: '#000000', category: 'bottom' },
-
-    // --- PREDATORS ---
-    { id: 'w_piranha', name: 'Piranha', price: 20, currency: 'gem', type: 'fish', species: 'piranha', gender: 'M', color: '#708090', category: 'predator' },
-    { id: 'w_arapaima', name: 'Arapaima', price: 50, currency: 'gem', type: 'fish', species: 'arapaima', gender: 'M', color: '#808000', category: 'predator' },
-    { id: 'w_arowana', name: 'Arowana', price: 40, currency: 'gem', type: 'fish', species: 'arowana', gender: 'M', color: '#C0C0C0', category: 'predator' },
-    { id: 'w_peacock', name: 'Peacock Bass', price: 30, currency: 'gem', type: 'fish', species: 'peacock_bass', gender: 'M', color: '#228B22', category: 'predator' },
-    { id: 'w_gar', name: 'Alligator Gar', price: 45, currency: 'gem', type: 'fish', species: 'alligator_gar', gender: 'M', color: '#556B2F', category: 'predator' },
-
-    // --- MARINE REEF ---
-    { id: 'w_clown', name: 'Clownfish (Nemo)', price: 200, currency: 'coin', type: 'fish', species: 'clownfish', gender: 'M', color: '#FF4500', category: 'marine_reef' },
-    { id: 'w_bluetang', name: 'Blue Tang (Dory)', price: 300, currency: 'coin', type: 'fish', species: 'blue_tang', gender: 'M', color: '#1E90FF', category: 'marine_reef' },
-    { id: 'w_yellowtang', name: 'Yellow Tang', price: 280, currency: 'coin', type: 'fish', species: 'yellow_tang', gender: 'M', color: '#FFFF00', category: 'marine_reef' },
-    { id: 'w_butterfly', name: 'Butterflyfish', price: 250, currency: 'coin', type: 'fish', species: 'butterflyfish', gender: 'M', color: '#F0E68C', category: 'marine_reef' },
-    { id: 'w_marineangel', name: 'İmparator Melek', price: 20, currency: 'gem', type: 'fish', species: 'marine_angelfish', gender: 'M', color: '#4B0082', category: 'marine_reef' },
-    { id: 'w_wrasse', name: 'Wrasse', price: 150, currency: 'coin', type: 'fish', species: 'wrasse', gender: 'M', color: '#32CD32', category: 'marine_reef' },
-    { id: 'w_goby', name: 'Goby', price: 100, currency: 'coin', type: 'fish', species: 'goby', gender: 'M', color: '#FF69B4', category: 'marine_reef' },
-    { id: 'w_firefish', name: 'Firefish', price: 180, currency: 'coin', type: 'fish', species: 'firefish', gender: 'M', color: '#FFD700', category: 'marine_reef' },
-    { id: 'w_anthias', name: 'Anthias', price: 160, currency: 'coin', type: 'fish', species: 'anthias', gender: 'M', color: '#FF7F50', category: 'marine_reef' },
-    { id: 'w_damsel', name: 'Damsel', price: 80, currency: 'coin', type: 'fish', species: 'damsel', gender: 'M', color: '#00BFFF', category: 'marine_reef' },
-
-    // --- MARINE OCEAN / GIANTS ---
-    { id: 'w_tuna', name: 'Bluefin Tuna', price: 50, currency: 'gem', type: 'fish', species: 'tuna', gender: 'M', color: '#000080', category: 'marine_big' },
-    { id: 'w_mahi', name: 'Mahi-Mahi', price: 40, currency: 'gem', type: 'fish', species: 'mahi_mahi', gender: 'M', color: '#32CD32', category: 'marine_big' },
-    { id: 'w_sword', name: 'Kılıç Balığı', price: 60, currency: 'gem', type: 'fish', species: 'swordfish', gender: 'M', color: '#778899', category: 'marine_big' },
-    { id: 'w_marlin', name: 'Blue Marlin', price: 70, currency: 'gem', type: 'fish', species: 'marlin', gender: 'M', color: '#4682B4', category: 'marine_big' },
-    { id: 'w_barracuda', name: 'Barracuda', price: 35, currency: 'gem', type: 'fish', species: 'barracuda', gender: 'M', color: '#C0C0C0', category: 'marine_big' },
-
-    // --- MARINE ODD ---
-    { id: 'w_lion', name: 'Aslan Balığı (Lionfish)', price: 300, currency: 'coin', type: 'fish', species: 'lionfish', gender: 'M', color: '#8B0000', category: 'marine_odd' },
-    { id: 'w_scorpion', name: 'İskorpit', price: 200, currency: 'coin', type: 'fish', species: 'scorpionfish', gender: 'M', color: '#8B4513', category: 'marine_odd' },
-    { id: 'w_angler', name: 'Fener Balığı', price: 40, currency: 'gem', type: 'fish', species: 'anglerfish', gender: 'M', color: '#2F4F4F', category: 'marine_odd' },
-    { id: 'w_moray', name: 'Müren (Moray Eel)', price: 350, currency: 'coin', type: 'fish', species: 'moray_eel', gender: 'M', color: '#556B2F', category: 'marine_odd' },
-    { id: 'w_flounder', name: 'Pisi Balığı', price: 150, currency: 'coin', type: 'fish', species: 'flounder', gender: 'M', color: '#D2B48C', category: 'marine_odd' },
-
-    // --- POLAR / COLD WATER ---
-    { id: 'w_halibut', name: 'Halibut', price: 200, currency: 'coin', type: 'fish', species: 'halibut', gender: 'M', color: '#696969', category: 'cold_water' },
-    { id: 'w_cod', name: 'Cod (Atlantik Morina)', price: 150, currency: 'coin', type: 'fish', species: 'cod', gender: 'M', color: '#8FBC8F', category: 'cold_water' },
-    { id: 'w_haddock', name: 'Mezgit (Haddock)', price: 120, currency: 'coin', type: 'fish', species: 'haddock', gender: 'M', color: '#708090', category: 'cold_water' },
-    { id: 'w_arctic_char', name: 'Arctic Char', price: 180, currency: 'coin', type: 'fish', species: 'arctic_char', gender: 'M', color: '#FA8072', category: 'cold_water' },
-    { id: 'w_capelin', name: 'Capelin', price: 50, currency: 'coin', type: 'fish', species: 'capelin', gender: 'M', color: '#C0C0C0', category: 'cold_water' },
-
-    // --- BRACKISH WATER ---
-    { id: 'w_archer', name: 'Okçu Balığı (Archerfish)', price: 250, currency: 'coin', type: 'fish', species: 'archerfish', gender: 'M', color: '#FFFFF0', category: 'brackish' },
-    { id: 'w_mono', name: 'Monodactylus', price: 200, currency: 'coin', type: 'fish', species: 'monodactylus', gender: 'M', color: '#D3D3D3', category: 'brackish' },
-    { id: 'w_scat', name: 'Scat', price: 180, currency: 'coin', type: 'fish', species: 'scat', gender: 'M', color: '#BDB76B', category: 'brackish' },
-    { id: 'w_mudskipper', name: 'Çamur Zıpzıpı', price: 300, currency: 'coin', type: 'fish', species: 'mudskipper', gender: 'M', color: '#8B4513', category: 'brackish' },
-
-    // --- COMMERCIAL / SEAFOOD ---
-    { id: 'w_salmon', name: 'Somon', price: 10, currency: 'gem', type: 'fish', species: 'salmon', gender: 'M', color: '#FA8072', category: 'seafood' },
-    { id: 'w_trout', name: 'Alabalık', price: 150, currency: 'coin', type: 'fish', species: 'trout', gender: 'M', color: '#556B2F', category: 'seafood' },
-    { id: 'w_torik', name: 'Torik', price: 200, currency: 'coin', type: 'fish', species: 'torik', gender: 'M', color: '#708090', category: 'seafood' },
-    { id: 'w_bluefish', name: 'Lüfer', price: 250, currency: 'coin', type: 'fish', species: 'bluefish', gender: 'M', color: '#4682B4', category: 'seafood' },
-    { id: 'w_mackerel', name: 'Uskumru', price: 100, currency: 'coin', type: 'fish', species: 'mackerel', gender: 'M', color: '#00CED1', category: 'seafood' },
-    { id: 'w_whiting', name: 'Mezgit', price: 80, currency: 'coin', type: 'fish', species: 'whiting', gender: 'M', color: '#DCDCDC', category: 'seafood' },
-    { id: 'w_orkinos', name: 'Orkinos', price: 60, currency: 'gem', type: 'fish', species: 'orkinos', gender: 'M', color: '#000080', category: 'seafood' },
-    { id: 'w_mullet', name: 'Kefal', price: 70, currency: 'coin', type: 'fish', species: 'mullet', gender: 'M', color: '#A9A9A9', category: 'seafood' },
-    { id: 'w_turbot', name: 'Kalkan', price: 300, currency: 'coin', type: 'fish', species: 'turbot', gender: 'M', color: '#8B4513', category: 'seafood' },
-    { id: 'w_red_mullet', name: 'Barbun', price: 120, currency: 'coin', type: 'fish', species: 'red_mullet', gender: 'M', color: '#CD5C5C', category: 'seafood' },
-    { id: 'w_red_seabream', name: 'Mercan', price: 140, currency: 'coin', type: 'fish', species: 'red_seabream', gender: 'M', color: '#FF6347', category: 'seafood' },
-    { id: 'w_horse_mackerel', name: 'İstavrit', price: 50, currency: 'coin', type: 'fish', species: 'horse_mackerel', gender: 'M', color: '#B0C4DE', category: 'seafood' },
-
-    // --- TURKISH LOCAL ---
-    { id: 'w_hamsi', name: 'Hamsi', price: 20, currency: 'coin', type: 'fish', species: 'hamsi', gender: 'M', color: '#C0C0C0', category: 'turkish' },
-    { id: 'w_cinekop', name: 'Çinekop', price: 150, currency: 'coin', type: 'fish', species: 'cinekop', gender: 'M', color: '#778899', category: 'turkish' },
-    { id: 'w_levrek', name: 'Levrek', price: 200, currency: 'coin', type: 'fish', species: 'levrek', gender: 'M', color: '#C0C0C0', category: 'turkish' },
-    { id: 'w_cupra', name: 'Çupra', price: 200, currency: 'coin', type: 'fish', species: 'cupra', gender: 'M', color: '#A9A9A9', category: 'turkish' },
-    { id: 'w_palamut', name: 'Palamut', price: 180, currency: 'coin', type: 'fish', species: 'palamut', gender: 'M', color: '#2F4F4F', category: 'turkish' },
-    { id: 'w_kofana', name: 'Kofana', price: 300, currency: 'coin', type: 'fish', species: 'kofana', gender: 'M', color: '#4682B4', category: 'turkish' },
-    { id: 'w_pike', name: 'Turna', price: 220, currency: 'coin', type: 'fish', species: 'pike', gender: 'M', color: '#556B2F', category: 'turkish' },
-    { id: 'w_chub', name: 'Tatlı Su Kefali', price: 60, currency: 'coin', type: 'fish', species: 'chub', gender: 'M', color: '#808000', category: 'turkish' },
-    { id: 'w_carp', name: 'Sazan', price: 80, currency: 'coin', type: 'fish', species: 'carp', gender: 'M', color: '#DAA520', category: 'turkish' },
-    { id: 'w_wels', name: 'Yayın (Dev)', price: 40, currency: 'gem', type: 'fish', species: 'wels_catfish', gender: 'M', color: '#2E2B5F', category: 'turkish' },
-    { id: 'w_pearl', name: 'İnci Kefali', price: 100, currency: 'coin', type: 'fish', species: 'pearl_mullet', gender: 'M', color: '#E6E6FA', category: 'turkish' },
-
-    // --- EXOTIC / RARE ---
-    { id: 'w_mandarin', name: 'Mandarinfish', price: 50, currency: 'gem', type: 'fish', species: 'mandarinfish', gender: 'M', color: '#00CED1', category: 'exotic' },
-    { id: 'w_seadragon', name: 'Leafy Sea Dragon', price: 80, currency: 'gem', type: 'fish', species: 'seadragon', gender: 'M', color: '#9ACD32', category: 'exotic' },
-    { id: 'w_seahorse', name: 'Denizatı', price: 40, currency: 'gem', type: 'fish', species: 'seahorse', gender: 'M', color: '#FFD700', category: 'exotic' },
-    { id: 'w_dragonfish', name: 'Dragonfish', price: 60, currency: 'gem', type: 'fish', species: 'dragonfish', gender: 'M', color: '#000000', category: 'exotic' },
-    { id: 'w_oarfish', name: 'Kral Ringa (Oarfish)', price: 100, currency: 'gem', type: 'fish', species: 'oarfish', gender: 'M', color: '#C0C0C0', category: 'exotic' },
-    { id: 'w_molamola', name: 'Mola Mola (Sunfish)', price: 90, currency: 'gem', type: 'fish', species: 'mola_mola', gender: 'M', color: '#778899', category: 'exotic' },
-
-    // --- APEX / DANGEROUS ---
-    { id: 'w_greatwhite', name: 'Büyük Beyaz Köpekbalığı', price: 200, currency: 'gem', type: 'fish', species: 'great_white_shark', gender: 'M', color: '#A9A9A9', category: 'apex' },
-    { id: 'w_tiger', name: 'Kaplan Köpekbalığı', price: 150, currency: 'gem', type: 'fish', species: 'tiger_shark', gender: 'M', color: '#708090', category: 'apex' },
-    { id: 'w_bull', name: 'Boğa Köpekbalığı', price: 140, currency: 'gem', type: 'fish', species: 'bull_shark', gender: 'M', color: '#696969', category: 'apex' },
-];
+const SAVE_KEY = 'fishFarmState_v14'; 
 
 const App: React.FC = () => {
   const [phase, setPhase] = useState<GamePhase>(GamePhase.INTRO);
   const [tankSize, setTankSize] = useState<{ w: number; h: number }>({ w: 800, h: 500 });
   const [shopOpen, setShopOpen] = useState(false);
-  const [shopCategory, setShopCategory] = useState<'fish' | 'plant' | 'decoration' | 'equipment' | 'supply'>('fish');
   const [isMuted, setIsMuted] = useState(false);
   const [sellMode, setSellMode] = useState(false);
   const [offlineReport, setOfflineReport] = useState<{ time: string, message: string } | null>(null);
+  const [showNursery, setShowNursery] = useState(false);
+  const [showLevelUp, setShowLevelUp] = useState<number | null>(null);
 
   const [gameState, setGameState] = useState<AppState>(() => {
-    const saved = localStorage.getItem('fishFarmState_v7');
+    const saved = localStorage.getItem(SAVE_KEY);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -174,12 +41,28 @@ const App: React.FC = () => {
             gameStarted: false, 
             food: [],
             lastSaveTime: parsed.lastSaveTime || Date.now(),
+            xp: parsed.xp || 0,
+            level: parsed.level || 1,
+            nurseryUnlocked: parsed.nurseryUnlocked || false,
+            bait: parsed.bait || 5, // Default bait
             fishes: parsed.fishes.map((f: any) => ({
                 ...f,
                 stage: f.stage || LifeStage.ADULT,
                 genes: f.genes || { colorHex: '#FFA500', rarity: 'common' },
-                wanderOffset: Math.random() * 100
-            }))
+                wanderOffset: Math.random() * 100,
+                disease: f.disease || 'none',
+                isSick: f.isSick || false,
+                location: f.location || 'main'
+            })),
+            inventory: {
+                medicine_general: parsed.inventory?.medicine || 0,
+                medicine_ich: parsed.inventory?.medicine_ich || 0,
+                medicine_fungus: parsed.inventory?.medicine_fungus || 0,
+            },
+            tankLevel: parsed.tankLevel || 1,
+            tankCapacity: parsed.tankCapacity || 20,
+            activeWallpaper: parsed.activeWallpaper || 'default',
+            ownedWallpapers: parsed.ownedWallpapers || ['default']
         };
       } catch (e) { console.error("Save load failed", e); }
     }
@@ -188,6 +71,10 @@ const App: React.FC = () => {
       lastSaveTime: Date.now(),
       money: INITIAL_MONEY,
       gems: INITIAL_GEMS,
+      xp: 0,
+      level: 1,
+      bait: 5,
+      nurseryUnlocked: false,
       waterParams: {
         temperature: 20, 
         ammonia: 0,
@@ -201,18 +88,48 @@ const App: React.FC = () => {
         lightLevel: 1,
         co2System: false
       },
-      inventory: { medicine: 0 },
+      inventory: { medicine_general: 0, medicine_ich: 0, medicine_fungus: 0 },
       lightOn: true,
       fishes: [],
       decorations: [],
       plants: [],
       food: [],
-      tasks: TASKS,
-      algaeLevel: 0
+      tasks: generateTasks(1),
+      algaeLevel: 0,
+      tankLevel: 1,
+      tankCapacity: 20,
+      activeWallpaper: 'default',
+      ownedWallpapers: ['default']
     };
   });
 
   const requestRef = useRef<number>(0);
+
+  // --- XP & Level System ---
+  const addXp = (amount: number) => {
+      setGameState(prev => {
+          const nextXp = prev.xp + amount;
+          const xpNeeded = prev.level * 100;
+          if (nextXp >= xpNeeded) {
+              audioManager.playChime();
+              setShowLevelUp(prev.level + 1);
+              // Level Up logic
+              const nextLevel = prev.level + 1;
+              const newTasks = generateTasks(nextLevel);
+              const unlockNursery = nextLevel === 3;
+              
+              return {
+                  ...prev,
+                  xp: nextXp - xpNeeded,
+                  level: nextLevel,
+                  nurseryUnlocked: prev.nurseryUnlocked || unlockNursery,
+                  gems: prev.gems + 2, // Level up reward
+                  tasks: [...prev.tasks, ...newTasks]
+              };
+          }
+          return { ...prev, xp: nextXp };
+      });
+  };
 
   // --- Initial Offline Calculation ---
   useEffect(() => {
@@ -241,7 +158,12 @@ const App: React.FC = () => {
            fishes.forEach(f => {
               if (f.stage !== LifeStage.EGG) {
                 f.hunger = Math.max(0, f.hunger - (diffSeconds * 0.01));
-                if (f.hunger < 20 && Math.random() > 0.5) f.isSick = true;
+                // Offline disease check based on water quality
+                // Sickness chance reduced for offline calculation too
+                if (waterParams.ammonia > 0.8 && Math.random() < 0.1) {
+                    f.disease = 'ich';
+                    f.isSick = true;
+                }
                 if (f.isSick) sickCount++;
               }
            });
@@ -279,77 +201,6 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // --- Helpers ---
-  const spawnFish = (type: FishType, gender: Gender = 'F', color: string = '#FFA500', isBaby = false): FishState => ({
-    id: Math.random().toString(36).substr(2, 9),
-    type,
-    gender,
-    stage: isBaby ? LifeStage.FRY : LifeStage.ADULT,
-    genes: { colorHex: color, rarity: 'common' },
-    position: { x: tankSize.w / 2, y: 100 },
-    velocity: { x: (Math.random() - 0.5) * 2, y: Math.random() },
-    wanderOffset: Math.random() * 1000,
-    size: isBaby ? 0.2 : 1.0,
-    hunger: 70,
-    health: 100,
-    stress: 0,
-    age: 0,
-    isSick: false,
-    reproductiveProgress: 0,
-    thoughts: ''
-  });
-
-  const mixColors = (c1: string, c2: string): string => {
-    // Very simple hex mixing
-    const parse = (c: string) => {
-       if (c.startsWith('#')) return {
-           r: parseInt(c.slice(1,3), 16),
-           g: parseInt(c.slice(3,5), 16),
-           b: parseInt(c.slice(5,7), 16)
-       };
-       // Basic color name fallback
-       if (c === 'purple') return { r: 128, g: 0, b: 128 };
-       return { r: 255, g: 255, b: 255 };
-    };
-    const col1 = parse(c1);
-    const col2 = parse(c2);
-    
-    // Mutation chance
-    if (Math.random() < 0.1) {
-       return '#' + Math.floor(Math.random()*16777215).toString(16);
-    }
-
-    const r = Math.floor((col1.r + col2.r) / 2);
-    const g = Math.floor((col1.g + col2.g) / 2);
-    const b = Math.floor((col1.b + col2.b) / 2);
-
-    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
-  };
-
-  const spawnEgg = (mom: FishState, dad: FishState): FishState => {
-      return {
-          id: Math.random().toString(36).substr(2, 9),
-          type: mom.type,
-          gender: Math.random() > 0.5 ? 'M' : 'F',
-          stage: LifeStage.EGG,
-          genes: { 
-              colorHex: mixColors(mom.genes.colorHex, dad.genes.colorHex),
-              rarity: 'common'
-          },
-          position: { x: mom.position.x, y: tankSize.h - 50 }, // Spawn at bottom
-          velocity: { x: 0, y: 0 },
-          wanderOffset: 0,
-          size: 0.1,
-          hunger: 100,
-          health: 100,
-          stress: 0,
-          age: 0,
-          isSick: false,
-          reproductiveProgress: 0,
-          thoughts: ''
-      };
-  };
-
   const handleDimensions = useCallback((w: number, h: number) => {
     setTankSize({ w, h });
   }, []);
@@ -365,16 +216,33 @@ const App: React.FC = () => {
     audioManager.toggleMute(newVal);
   };
 
+  const saveGame = () => {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(gameState));
+      audioManager.playChime();
+      alert("Oyun Kaydedildi!");
+  };
+
+  const resetGame = () => {
+      if (confirm("Tüm ilerlemeniz silinecek. Emin misiniz?")) {
+          localStorage.removeItem(SAVE_KEY);
+          window.location.reload();
+      }
+  };
+
   // --- Physics Engine ---
   const updatePhysics = useCallback(() => {
     if (phase !== GamePhase.PLAYING) return;
 
     setGameState(prev => {
       const now = Date.now();
-      const fishCount = prev.fishes.length;
+      const currentLocation = showNursery ? 'nursery' : 'main';
+      const visibleFishes = prev.fishes.filter(f => f.location === currentLocation);
+      
+      const fishCount = visibleFishes.length;
       let { temperature, ammonia, oxygen, ph } = prev.waterParams;
       let { algaeLevel } = prev;
       let money = prev.money;
+      // We process ALL fishes, but physics only matters for active tank mostly (simplified: all physics run)
       let fishes = prev.fishes.map(f => ({ ...f }));
       let plants = [...prev.plants];
       
@@ -382,11 +250,11 @@ const App: React.FC = () => {
       const targetTemp = prev.equipment.heater ? 25 : 18;
       if (temperature < targetTemp) temperature += 0.02; else if (temperature > targetTemp) temperature -= 0.01;
       
-      const wasteLoad = (fishCount * 0.0005) + (prev.food.length * 0.002);
+      const wasteLoad = (prev.fishes.length * 0.0005) + (prev.food.length * 0.002);
       let filterEfficiency = [0.01, 0.03, 0.08][prev.equipment.filterLevel - 1] || 0.01;
       ammonia = Math.max(0, ammonia + wasteLoad - filterEfficiency - (plants.length * 0.002));
       
-      oxygen = Math.min(100, Math.max(0, oxygen - (fishCount * 0.02) + 0.05 + (prev.equipment.airStone ? 0.15 : 0)));
+      oxygen = Math.min(100, Math.max(0, oxygen - (prev.fishes.length * 0.02) + 0.05 + (prev.equipment.airStone ? 0.15 : 0)));
       
       if (prev.lightOn) {
           algaeLevel = Math.min(100, algaeLevel + (prev.equipment.lightLevel * 0.005) + (ammonia * 0.05));
@@ -395,7 +263,7 @@ const App: React.FC = () => {
 
       // --- Fish AI Loop ---
       const survivingFood = [...prev.food];
-      const predators = fishes.filter(f => ['piranha', 'arapaima', 'arowana', 'peacock_bass', 'alligator_gar', 'barracuda', 'marine_odd', 'shark', 'great_white_shark', 'tiger_shark', 'bull_shark'].includes(f.type) && f.stage !== LifeStage.EGG);
+      const predators = fishes.filter(f => f.location === currentLocation && ['piranha', 'arapaima', 'arowana', 'peacock_bass', 'alligator_gar', 'barracuda', 'marine_odd', 'shark', 'great_white_shark', 'tiger_shark', 'bull_shark'].includes(f.type) && f.stage !== LifeStage.EGG);
 
       fishes = fishes.map(fish => {
           fish.age += 1;
@@ -406,6 +274,7 @@ const App: React.FC = () => {
                   fish.stage = LifeStage.FRY;
                   fish.size = 0.2;
                   fish.velocity = { x: (Math.random() - 0.5), y: -0.5 };
+                  // Auto-move to nursery if unlocked? optional
               }
               // Eggs sink
               if (fish.position.y < tankSize.h - 20) fish.position.y += 0.2;
@@ -418,30 +287,40 @@ const App: React.FC = () => {
               else fish.stage = LifeStage.ADULT;
           }
 
-          // Health & Stress
+          // Health & Disease Logic
           let stressFactor = 0;
           if (ammonia > 0.5) { stressFactor += 1; fish.health -= 0.05; }
           if (fish.hunger <= 0) { fish.health -= 0.1; }
           fish.stress = Math.min(100, Math.max(0, fish.stress + (stressFactor * 0.1) - 0.05));
           fish.hunger = Math.max(0, fish.hunger - 0.03);
 
+          // Random Disease Chance
+          // REDUCED PROBABILITY: Was 0.0001 (1/10000), now 0.00002 (1/50000)
+          if (fish.disease === 'none' && Math.random() < 0.00002) { 
+              if (temperature < 22) fish.disease = 'ich'; // Cold causes Ich
+              else if (ammonia > 0.8) fish.disease = 'fungus'; // Dirty causes Fungus
+              else if (fish.stress > 80) fish.disease = 'parasite'; // Stress causes Parasites
+              
+              if (fish.disease !== 'none') fish.isSick = true;
+          }
+          if (fish.isSick) fish.health -= 0.05;
+
           // MOVEMENT VECTORS
           const speedMod = (fish.isSick || temperature < 20) ? 0.5 : 1.0;
           let ax = 0, ay = 0;
 
-          // 1. WANDER (Perlin-ish using sin/cos of offset)
+          // 1. WANDER
           fish.wanderOffset += 0.01;
           ax += Math.sin(fish.wanderOffset) * 0.05;
           ay += Math.cos(fish.wanderOffset * 1.3) * 0.05;
 
-          // 2. FLEE (Threat Detection)
+          // 2. FLEE
           if (!['piranha', 'arapaima', 'arowana', 'peacock_bass', 'alligator_gar', 'barracuda', 'great_white_shark', 'tiger_shark', 'bull_shark'].includes(fish.type)) {
               predators.forEach(predator => {
                   const dx = predator.position.x - fish.position.x;
                   const dy = predator.position.y - fish.position.y;
                   const dist = Math.sqrt(dx*dx + dy*dy);
                   if (dist < 150) {
-                      // Run away!
                       ax -= (dx / dist) * 0.3;
                       ay -= (dy / dist) * 0.3;
                       fish.stress += 0.1;
@@ -449,9 +328,9 @@ const App: React.FC = () => {
               });
           }
 
-          // 3. FLOCKING (Boids - simplified)
-          if (['neon', 'guppy', 'cardinal_tetra', 'ember_tetra', 'rasbora', 'anthias', 'hamsi', 'capelin'].includes(fish.type)) {
-               fishes.forEach(other => {
+          // 3. FLOCKING
+          if (['neon', 'guppy', 'cardinal_tetra', 'ember_tetra', 'rasbora', 'anthias', 'hamsi', 'capelin', 'sardine', 'neon_rainbowfish', 'zebra_danio'].includes(fish.type)) {
+               fishes.filter(o => o.location === fish.location).forEach(other => {
                   if (other.id !== fish.id && other.type === fish.type) {
                       const dx = other.position.x - fish.position.x;
                       const dy = other.position.y - fish.position.y;
@@ -471,7 +350,7 @@ const App: React.FC = () => {
           // 4. FOOD SEEKING
           let closestFood = null;
           let minFoodDist = 300;
-          prev.food.forEach(f => {
+          prev.food.filter(f => f.tankId === fish.location).forEach(f => {
               const dx = f.position.x - fish.position.x;
               const dy = f.position.y - fish.position.y;
               const dist = Math.sqrt(dx*dx + dy*dy);
@@ -497,11 +376,6 @@ const App: React.FC = () => {
           if (fish.position.y < pad) fish.velocity.y += 0.5;
           if (fish.position.y > tankSize.h - pad) fish.velocity.y -= 0.5;
           
-          // Bottom dweller constraint
-          if (['corydoras', 'pleco', 'loach', 'catfish', 'goby', 'flounder', 'wels_catfish', 'mudskipper', 'scorpionfish', 'halibut', 'turbot'].includes(fish.type)) {
-               if (fish.position.y < tankSize.h - 100) fish.velocity.y += 0.5;
-          }
-
           // Drag
           fish.velocity.x *= 0.98;
           fish.velocity.y *= 0.98;
@@ -521,32 +395,33 @@ const App: React.FC = () => {
       const foodToRemove = new Set<string>();
       const fishToRemove = new Set<string>();
       const newEggs: FishState[] = [];
+      let xpGained = 0;
 
       fishes.forEach(fish => {
           // Eating Food
-          survivingFood.forEach(f => {
+          survivingFood.filter(f => f.tankId === fish.location).forEach(f => {
              if (foodToRemove.has(f.id)) return;
              const dist = Math.hypot(f.position.x - fish.position.x, f.position.y - fish.position.y);
              if (dist < 30 * fish.size && fish.stage !== LifeStage.EGG) {
                  fish.hunger = Math.min(100, fish.hunger + 30);
                  foodToRemove.add(f.id);
                  audioManager.playBubble();
+                 xpGained += 1;
              }
           });
 
           // PREDATOR EATING FISH
-          if (['piranha', 'arapaima', 'arowana', 'peacock_bass', 'alligator_gar', 'barracuda', 'lionfish', 'moray_eel', 'great_white_shark', 'tiger_shark', 'bull_shark'].includes(fish.type) && fish.size > 0.8) {
-              fishes.forEach(prey => {
+          if (['piranha', 'arapaima', 'arowana', 'peacock_bass', 'alligator_gar', 'barracuda', 'lionfish', 'moray_eel', 'great_white_shark', 'tiger_shark', 'bull_shark', 'clown_triggerfish'].includes(fish.type) && fish.size > 0.8) {
+              fishes.filter(o => o.location === fish.location).forEach(prey => {
                   if (prey.id === fish.id) return;
                   if (fishToRemove.has(prey.id)) return;
-                  // Predators don't eat same species or other big predators usually (simplified)
-                  if (['piranha', 'arapaima', 'arowana', 'peacock_bass', 'alligator_gar', 'barracuda', 'lionfish', 'moray_eel', 'great_white_shark', 'tiger_shark', 'bull_shark'].includes(prey.type)) return;
+                  if (['piranha', 'arapaima', 'arowana', 'peacock_bass', 'alligator_gar', 'barracuda', 'lionfish', 'moray_eel', 'great_white_shark', 'tiger_shark', 'bull_shark', 'clown_triggerfish'].includes(prey.type)) return;
 
                   const dist = Math.hypot(prey.position.x - fish.position.x, prey.position.y - fish.position.y);
                   if (dist < 40 && prey.size < fish.size * 0.5) {
                       fishToRemove.add(prey.id);
                       fish.hunger = 100;
-                      audioManager.playBubble(); // Chomp sound ideally
+                      audioManager.playBubble(); 
                   }
               });
           }
@@ -557,6 +432,7 @@ const App: React.FC = () => {
                   m.id !== fish.id && 
                   m.type === fish.type && 
                   m.gender === 'M' && 
+                  m.location === fish.location &&
                   m.reproductiveProgress >= 100 &&
                   Math.hypot(m.position.x - fish.position.x, m.position.y - fish.position.y) < 50
               );
@@ -565,17 +441,31 @@ const App: React.FC = () => {
                   fish.reproductiveProgress = 0;
                   mate.reproductiveProgress = 0;
                   fish.thoughts = "❤️";
-                  newEggs.push(spawnEgg(fish, mate));
+                  newEggs.push(spawnEgg(fish, mate, tankSize.h));
                   audioManager.playChime();
+                  xpGained += 50;
               }
           }
       });
+
+      // Handle Task Updates (Breeding)
+      if (newEggs.length > 0) {
+          prev.tasks = prev.tasks.map(t => {
+              if (t.type === 'breed') return { ...t, current: t.current + newEggs.length, completed: true };
+              return t;
+          });
+      }
 
       const finalFishes = [...fishes.filter(f => !fishToRemove.has(f.id)), ...newEggs];
       const finalFood = survivingFood.filter(f => !foodToRemove.has(f.id)).filter(f => {
            if (now - parseInt(f.id, 36) > 20000) return false;
            return true;
       });
+
+      // XP Gain
+      if (xpGained > 0) {
+          addXp(xpGained);
+      }
 
       return {
           ...prev,
@@ -585,12 +475,12 @@ const App: React.FC = () => {
           plants: plants,
           food: finalFood,
           algaeLevel: algaeLevel,
-          lastSaveTime: now // Update save time constantly while playing
+          lastSaveTime: now 
       };
     });
 
     requestRef.current = requestAnimationFrame(updatePhysics);
-  }, [phase, tankSize]);
+  }, [phase, tankSize, showNursery]); 
 
   useEffect(() => {
     requestRef.current = requestAnimationFrame(updatePhysics);
@@ -601,7 +491,7 @@ const App: React.FC = () => {
   useEffect(() => {
       const timer = setInterval(() => {
           if (phase === GamePhase.PLAYING) {
-              localStorage.setItem('fishFarmState_v7', JSON.stringify(gameState));
+              localStorage.setItem(SAVE_KEY, JSON.stringify(gameState));
           }
       }, 5000);
       return () => clearInterval(timer);
@@ -612,7 +502,10 @@ const App: React.FC = () => {
       audioManager.startMusic();
       setPhase(GamePhase.PLAYING);
       if (gameState.fishes.length === 0) {
-           setGameState(p => ({ ...p, fishes: [spawnFish('goldfish', 'M'), spawnFish('goldfish', 'F')] }));
+           setGameState(p => ({ ...p, fishes: [
+               spawnFish('goldfish', 'M', '#FFA500', false, tankSize.w, tankSize.h), 
+               spawnFish('goldfish', 'F', '#FF8C00', false, tankSize.w, tankSize.h)
+           ] }));
       }
   };
 
@@ -621,6 +514,7 @@ const App: React.FC = () => {
   const handleTankClick = (x: number, y: number, target?: any) => {
       if (sellMode) {
           const closestFish = gameState.fishes.find(f => {
+              if (f.location !== (showNursery ? 'nursery' : 'main')) return false;
               const dx = f.position.x - x;
               const dy = f.position.y - y;
               return Math.sqrt(dx*dx + dy*dy) < 40 * f.size;
@@ -633,21 +527,19 @@ const App: React.FC = () => {
       setGameState(prev => ({
           ...prev,
           money: prev.money - 1,
-          food: [...prev.food, { id: Math.random().toString(36).substr(2, 9), position: { x, y }, active: true }],
-          tasks: prev.tasks.map(t => t.id === 't1' ? { ...t, current: Math.min(t.current + 1, t.target) } : t)
+          food: [...prev.food, { id: Math.random().toString(36).substr(2, 9), position: { x, y }, active: true, tankId: showNursery ? 'nursery' : 'main' }],
+          tasks: prev.tasks.map(t => t.type === 'feed' ? { ...t, current: Math.min(t.current + 1, t.target) } : t)
       }));
   };
 
   const sellFish = (fishId: string) => {
       const fish = gameState.fishes.find(f => f.id === fishId);
-      if (!fish || fish.stage === LifeStage.EGG) return; // Can't sell eggs
+      if (!fish || fish.stage === LifeStage.EGG) return; 
 
       let value = 20;
       if (['goldfish', 'platy', 'molly'].includes(fish.type)) value = 30;
       if (['discus', 'arapaima', 'arowana'].includes(fish.type)) value = 150;
-      // Saltwater is expensive
       if (['blue_tang', 'clownfish', 'lionfish', 'seahorse'].includes(fish.type)) value = 200;
-      // Sharks are huge money
       if (['great_white_shark', 'tiger_shark', 'bull_shark', 'mola_mola'].includes(fish.type)) value = 500;
       
       value *= fish.size; 
@@ -664,6 +556,7 @@ const App: React.FC = () => {
 
   const handleWaterChange = () => {
     audioManager.playBubble();
+    addXp(15);
     setGameState(prev => ({
         ...prev,
         waterParams: {
@@ -672,47 +565,100 @@ const App: React.FC = () => {
             oxygen: 90,
             temperature: (prev.waterParams.temperature * 0.7) + (20 * 0.3)
         },
-        tasks: prev.tasks.map(t => t.id === 't2' ? { ...t, current: 1 } : t)
+        tasks: prev.tasks.map(t => t.type === 'clean' ? { ...t, current: 1 } : t)
     }));
   };
 
   const handleScrubAlgae = () => {
       if (gameState.algaeLevel <= 0) return;
       audioManager.playBubble();
+      addXp(5);
       setGameState(prev => ({
           ...prev,
           algaeLevel: Math.max(0, prev.algaeLevel - 20),
-          tasks: prev.tasks.map(t => t.id === 't3' ? { ...t, current: 1, completed: true } : t)
       }));
-      const task = gameState.tasks.find(t => t.id === 't3');
-      if (task && !task.completed) {
-          collectReward('t3');
-      }
   };
 
   const handleTreatFish = () => {
-      if (gameState.inventory.medicine > 0) {
-          audioManager.playChime();
-          setGameState(prev => ({
+      // Prioritize specific meds if fish have specific disease
+      // This is a simplified interaction: Clicking treats all appropriate
+      const sickFishes = gameState.fishes.filter(f => f.isSick && f.location === (showNursery ? 'nursery' : 'main'));
+      
+      if (sickFishes.length === 0) return;
+
+      setGameState(prev => {
+          let inv = { ...prev.inventory };
+          let treatedFishes = prev.fishes.map(f => ({...f}));
+          let playedSound = false;
+
+          treatedFishes = treatedFishes.map(f => {
+               if (f.location !== (showNursery ? 'nursery' : 'main')) return f;
+               
+               if (f.disease === 'ich' && inv.medicine_ich > 0) {
+                   inv.medicine_ich--;
+                   f.disease = 'none';
+                   f.isSick = false;
+                   f.health = 100;
+                   playedSound = true;
+               } else if (f.disease === 'fungus' && inv.medicine_fungus > 0) {
+                   inv.medicine_fungus--;
+                   f.disease = 'none';
+                   f.isSick = false;
+                   f.health = 100;
+                   playedSound = true;
+               } else if (f.isSick && inv.medicine_general > 0) {
+                   // General cure / Parasite / Stress
+                   inv.medicine_general--;
+                   f.disease = 'none';
+                   f.isSick = false;
+                   f.health = 100;
+                   playedSound = true;
+               }
+               return f;
+          });
+
+          if (playedSound) audioManager.playChime();
+          
+          return {
               ...prev,
-              inventory: { ...prev.inventory, medicine: prev.inventory.medicine - 1 },
-              fishes: prev.fishes.map(f => ({ ...f, isSick: false, health: Math.min(100, f.health + 20) }))
-          }));
-      }
+              inventory: inv,
+              fishes: treatedFishes
+          };
+      });
+  };
+
+  const moveFryToNursery = () => {
+      if (!gameState.nurseryUnlocked) return;
+      setGameState(prev => ({
+          ...prev,
+          fishes: prev.fishes.map(f => {
+              if (f.stage === LifeStage.FRY || f.stage === LifeStage.EGG) {
+                  return { ...f, location: 'nursery' };
+              }
+              return f;
+          })
+      }));
   };
 
   const buyItem = (item: any) => {
       const currency = item.currency === 'gem' ? gameState.gems : gameState.money;
       if (currency < item.price) return;
 
+      // Handle "Already owned" for wallpapers
+      if (item.type === 'wallpaper' && gameState.ownedWallpapers.includes(item.visual)) {
+           setGameState(prev => ({ ...prev, activeWallpaper: item.visual }));
+           return;
+      }
+
       audioManager.playChime();
+      addXp(10);
       setGameState(prev => {
           const next = { ...prev };
           if (item.currency === 'gem') next.gems -= item.price;
           else next.money -= item.price;
 
           if (item.type === 'fish') {
-              next.fishes = [...next.fishes, spawnFish(item.species, item.gender, item.color)];
+              next.fishes = [...next.fishes, spawnFish(item.species, item.gender, item.color, false, tankSize.w, tankSize.h)];
           } else if (item.type === 'plant') {
               next.plants = [...next.plants, { id: Math.random().toString(), type: item.visual, x: Math.random() * (tankSize.w - 50) + 25, growth: 0.5, health: 100 }];
           } else if (item.type === 'decoration') {
@@ -723,8 +669,32 @@ const App: React.FC = () => {
               if (item.subtype === 'heater') next.equipment.heater = true;
               if (item.subtype === 'airstone') next.equipment.airStone = true;
               if (item.subtype === 'co2') next.equipment.co2System = true;
+              if (item.subtype === 'tank') {
+                  next.tankCapacity = item.size;
+                  next.tankLevel = (next.tankLevel || 1) + 1;
+              }
           } else if (item.type === 'supply') {
-              if (item.visual === 'medicine') next.inventory.medicine += 1;
+              if (item.visual === 'medicine_general') next.inventory.medicine_general += 1;
+              if (item.visual === 'medicine_ich') next.inventory.medicine_ich += 1;
+              if (item.visual === 'medicine_fungus') next.inventory.medicine_fungus += 1;
+              if (item.visual === 'bait') next.bait = (next.bait || 0) + 5;
+          } else if (item.type === 'wallpaper') {
+              next.ownedWallpapers = [...next.ownedWallpapers, item.visual];
+              next.activeWallpaper = item.visual;
+          }
+          return next;
+      });
+  };
+
+  const handleFishCaught = (fishInfo: SpeciesInfo | null, sellPrice: number) => {
+      setGameState(prev => {
+          const next = { ...prev };
+          next.bait = Math.max(0, next.bait - 1); // Consume bait
+          next.money += sellPrice;
+          
+          if (fishInfo && sellPrice === 0) {
+              // Keep fish
+              next.fishes = [...next.fishes, spawnFish(fishInfo.species, fishInfo.gender, fishInfo.color, false, tankSize.w, tankSize.h)];
           }
           return next;
       });
@@ -732,21 +702,28 @@ const App: React.FC = () => {
 
   const triggerThought = async () => {
       if (gameState.fishes.length === 0) return;
-      const fishIndex = Math.floor(Math.random() * gameState.fishes.length);
-      const fish = gameState.fishes[fishIndex];
+      const visibleFishes = gameState.fishes.filter(f => f.location === (showNursery ? 'nursery' : 'main'));
+      if (visibleFishes.length === 0) return;
+
+      const fishIndex = Math.floor(Math.random() * visibleFishes.length);
+      const fish = visibleFishes[fishIndex];
       // Do not generate thoughts for eggs
       if (fish.stage === LifeStage.EGG) return;
       
       const thought = await getFishThoughts(fish, gameState.lightOn, gameState.waterParams);
       setGameState(prev => {
-          const newFishes = [...prev.fishes];
-          newFishes[fishIndex] = { ...newFishes[fishIndex], thoughts: thought };
+          const newFishes = prev.fishes.map(f => {
+              if (f.id === fish.id) return { ...f, thoughts: thought };
+              return f;
+          });
           return { ...prev, fishes: newFishes };
       });
       setTimeout(() => {
         setGameState(prev => {
-            const newFishes = [...prev.fishes];
-            if (newFishes[fishIndex]) newFishes[fishIndex].thoughts = '';
+            const newFishes = prev.fishes.map(f => {
+                if (f.id === fish.id) return { ...f, thoughts: '' };
+                return f;
+            });
             return { ...prev, fishes: newFishes };
         });
       }, 5000);
@@ -761,9 +738,11 @@ const App: React.FC = () => {
               ...prev,
               money: prev.money + t.reward,
               gems: prev.gems + (t.gemReward || 0),
+              xp: prev.xp + t.xpReward,
               tasks: prev.tasks.filter(x => x.id !== id)
           };
       });
+      addXp(0); 
   };
 
   // --- RENDER PHASES ---
@@ -775,10 +754,29 @@ const App: React.FC = () => {
                   setPhase(GamePhase.PLAYING);
                   setShopOpen(true); // Re-open shop on return
               }}
-              items={WHOLESALE_ITEMS}
+              items={SPECIES_DB}
               onBuy={buyItem}
               money={gameState.money}
               gems={gameState.gems}
+              playerLevel={gameState.level}
+              tankCapacity={gameState.tankCapacity}
+          />
+      );
+  }
+
+  if (phase === GamePhase.FISHING) {
+      return (
+          <FishingGame 
+              onBack={() => setPhase(GamePhase.PLAYING)}
+              onFishCaught={handleFishCaught}
+              baitCount={gameState.bait || 0}
+              onBuyBait={() => {
+                  if (gameState.money >= 50) {
+                      buyItem({ price: 50, currency: 'coin', type: 'supply', visual: 'bait' });
+                  } else {
+                      alert("Yetersiz bakiye!");
+                  }
+              }}
           />
       );
   }
@@ -788,6 +786,25 @@ const App: React.FC = () => {
       
       {phase === GamePhase.INTRO && (
         <IntroSequence onComplete={startGame} />
+      )}
+
+      {/* Level Up Modal */}
+      {showLevelUp && (
+          <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur">
+              <div className="bg-gradient-to-br from-yellow-600 to-yellow-900 p-8 rounded-3xl border-4 border-yellow-400 shadow-[0_0_50px_gold] text-center transform animate-bounce">
+                  <Trophy size={64} className="mx-auto text-yellow-200 mb-4" />
+                  <h2 className="text-4xl font-bold text-white mb-2">SEVİYE {showLevelUp}!</h2>
+                  <p className="text-yellow-100 text-lg mb-6">Yeni balıklar ve özellikler açıldı!</p>
+                  <div className="flex justify-center gap-4">
+                      <div className="bg-black/40 px-4 py-2 rounded flex items-center gap-2 text-purple-300">
+                          <Diamond size={20} /> +2 Elmas
+                      </div>
+                  </div>
+                  <button onClick={() => setShowLevelUp(null)} className="mt-6 bg-white text-yellow-900 font-bold px-8 py-3 rounded-full hover:scale-110 transition-transform">
+                      HARİKA!
+                  </button>
+              </div>
+          </div>
       )}
 
       {/* Offline Report Modal */}
@@ -818,6 +835,23 @@ const App: React.FC = () => {
               
               {/* Header / HUD */}
               <div className="flex justify-between items-center bg-gray-900/80 p-3 rounded-2xl backdrop-blur-sm border border-gray-800 shadow-xl z-50">
+                   {/* Level & XP */}
+                   <div className="flex items-center gap-3">
+                       <div className="relative w-12 h-12 flex items-center justify-center bg-gradient-to-br from-yellow-500 to-orange-600 rounded-full border-2 border-yellow-300 shadow-lg">
+                           <span className="font-bold text-white text-xl">{gameState.level}</span>
+                           <div className="absolute -bottom-1 bg-gray-900 px-1 rounded text-[8px] text-gray-400 uppercase">LVL</div>
+                       </div>
+                       <div className="flex flex-col gap-1 w-24 md:w-32">
+                           <div className="flex justify-between text-[10px] text-gray-400">
+                               <span>XP</span>
+                               <span>{gameState.xp}/{gameState.level * 100}</span>
+                           </div>
+                           <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+                               <div className="h-full bg-yellow-500" style={{ width: `${(gameState.xp / (gameState.level * 100)) * 100}%` }}></div>
+                           </div>
+                       </div>
+                   </div>
+
                    <div className="flex items-center gap-4">
                        <div className="bg-black/50 px-3 py-1 rounded-full flex items-center gap-2 border border-gray-700">
                            <Coins className="text-yellow-400" size={16} />
@@ -829,11 +863,26 @@ const App: React.FC = () => {
                        </div>
                    </div>
 
-                   <h1 className="hidden md:block text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
-                       Akvaryumum
-                   </h1>
-
                    <div className="flex gap-2">
+                       {/* Save / Reset */}
+                       <button onClick={saveGame} className="p-2 bg-gray-800 rounded-full text-green-400 hover:text-white transition-colors" title="Kaydet">
+                           <Save size={18} />
+                       </button>
+                       <button onClick={resetGame} className="p-2 bg-gray-800 rounded-full text-red-400 hover:text-white transition-colors" title="Sıfırla">
+                           <RotateCcw size={18} />
+                       </button>
+
+                       {/* Nursery Toggle */}
+                       {gameState.nurseryUnlocked && (
+                           <button 
+                               onClick={() => setShowNursery(!showNursery)}
+                               className={`p-2 rounded-full transition-colors ${showNursery ? 'bg-pink-600 text-white animate-pulse' : 'bg-gray-800 text-pink-400'}`}
+                               title="Yavru Tankı"
+                           >
+                               <Baby size={18} />
+                           </button>
+                       )}
+
                        <button onClick={toggleMute} className="p-2 bg-gray-800 rounded-full text-gray-400 hover:text-white transition-colors">
                            {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
                        </button>
@@ -886,10 +935,16 @@ const App: React.FC = () => {
                            <button onClick={handleScrubAlgae} className={`p-2 rounded-xl transition-colors ${gameState.algaeLevel > 10 ? 'bg-green-600/50 hover:bg-green-600 text-green-100' : 'bg-gray-800 text-gray-600'}`}>
                                <Eraser size={20} />
                            </button>
-                           <button onClick={handleTreatFish} className={`p-2 rounded-xl transition-colors ${gameState.inventory.medicine > 0 ? 'bg-red-500/30 hover:bg-red-500 text-red-200' : 'bg-gray-800 text-gray-600'}`}>
-                               <Pill size={20} />
-                               <span className="absolute bottom-0 right-0 text-[8px] bg-black px-1 rounded-full">{gameState.inventory.medicine}</span>
-                           </button>
+                           
+                           {/* Treat Fish Button with Badge */}
+                           <div className="relative">
+                               <button onClick={handleTreatFish} className={`p-2 rounded-xl transition-colors ${(gameState.inventory.medicine_general + gameState.inventory.medicine_ich + gameState.inventory.medicine_fungus) > 0 ? 'bg-red-500/30 hover:bg-red-500 text-red-200' : 'bg-gray-800 text-gray-600'}`}>
+                                   <Pill size={20} />
+                               </button>
+                               <span className="absolute -top-1 -right-1 text-[8px] bg-white text-black px-1 rounded-full font-bold">
+                                   {gameState.inventory.medicine_general + gameState.inventory.medicine_ich + gameState.inventory.medicine_fungus}
+                               </span>
+                           </div>
                            
                            {/* SELL MODE TOGGLE */}
                            <button 
@@ -903,14 +958,23 @@ const App: React.FC = () => {
 
                   {/* AQUARIUM VIEW */}
                   <div className="flex-1 relative">
-                       <Aquarium 
-                          state={gameState}
-                          onDimensionsChange={handleDimensions}
-                          onFeed={handleTankClick}
-                          onClean={handleWaterChange}
-                          toggleLight={toggleLight}
-                          sellMode={sellMode}
-                       />
+                       {/* Nursery Header Overlay */}
+                       {showNursery && (
+                           <div className="absolute top-0 left-0 right-0 bg-pink-500/20 text-pink-200 text-center py-1 text-xs uppercase tracking-widest font-bold z-40 backdrop-blur-sm rounded-t-2xl">
+                               Yavru Tankı (Kuluçkahane)
+                           </div>
+                       )}
+
+                       <div className={showNursery ? 'border-4 border-pink-400 rounded-2xl h-full' : 'h-full'}>
+                           <Aquarium 
+                              state={{...gameState, fishes: gameState.fishes.filter(f => f.location === (showNursery ? 'nursery' : 'main'))}}
+                              onDimensionsChange={handleDimensions}
+                              onFeed={handleTankClick}
+                              onClean={handleWaterChange}
+                              toggleLight={toggleLight}
+                              sellMode={sellMode}
+                           />
+                       </div>
                        
                        {/* AI Thought Button */}
                        <button 
@@ -919,11 +983,21 @@ const App: React.FC = () => {
                        >
                            <Activity size={24} />
                        </button>
+
+                       {/* Move Fry Button (Only in Main view if Nursery exists) */}
+                       {!showNursery && gameState.nurseryUnlocked && (
+                           <button 
+                               onClick={moveFryToNursery}
+                               className="absolute bottom-4 left-20 px-3 py-2 bg-pink-600/80 hover:bg-pink-500 rounded-lg text-white text-xs font-bold shadow-lg"
+                           >
+                               Yavruları Taşı
+                           </button>
+                       )}
                   </div>
 
                   {/* Right Panel: Tasks */}
                   <div className="hidden md:flex w-48 flex-col gap-2 bg-gray-900/50 rounded-2xl p-3 border border-gray-800">
-                      <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Görevler</h3>
+                      <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Günlük Görevler</h3>
                       {gameState.tasks.map(task => (
                           <div key={task.id} className="bg-black/40 p-2 rounded-lg border border-gray-700 text-sm">
                               <p className="text-gray-300 text-xs mb-1">{task.description}</p>
@@ -937,88 +1011,46 @@ const App: React.FC = () => {
                               ) : (
                                   <div className="flex justify-between text-[10px] text-gray-500">
                                       <span>{task.current}/{task.target}</span>
-                                      <span className="text-yellow-500">+{task.reward}</span>
+                                      <div className="flex gap-1">
+                                          <span className="text-blue-400">+{task.xpReward}XP</span>
+                                          <span className="text-yellow-500">+{task.reward}₺</span>
+                                      </div>
                                   </div>
                               )}
                           </div>
                       ))}
+                      {gameState.tasks.length === 0 && (
+                          <div className="text-center text-gray-500 text-xs italic">Tüm görevler bitti! Seviye atlayarak yenilerini aç.</div>
+                      )}
+                      
+                      {/* FISHING GAME BUTTON */}
+                      <button 
+                        onClick={() => setPhase(GamePhase.FISHING)}
+                        className="mt-4 w-full bg-gradient-to-r from-blue-700 to-cyan-700 hover:from-blue-600 hover:to-cyan-600 text-white font-bold py-3 rounded-xl border border-blue-500/30 flex flex-col items-center justify-center gap-1 shadow-lg transition-transform active:scale-95 group"
+                      >
+                         <div className="text-2xl group-hover:-translate-y-1 transition-transform">🎣</div>
+                         <span className="text-sm">Balık Tut</span>
+                         <span className="text-[10px] text-blue-200 font-normal">Göl Kenarı &gt;</span>
+                      </button>
                   </div>
 
               </div>
           </div>
       )}
 
-      {/* SHOP MODAL */}
+      {/* SHOP 3D OVERLAY */}
       {shopOpen && phase === GamePhase.PLAYING && (
-          <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="bg-gray-900 w-full max-w-4xl h-[80vh] rounded-3xl border border-gray-700 shadow-2xl overflow-hidden flex flex-col">
-                  {/* Shop Header */}
-                  <div className="p-6 bg-gradient-to-r from-gray-900 to-gray-800 border-b border-gray-700 flex justify-between items-center">
-                      <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                          <ShoppingBag className="text-cyan-400" /> Akvaryum Market
-                      </h2>
-                      <div className="flex gap-2">
-                           {/* SHOWROOM BUTTON */}
-                           <button 
-                               onClick={() => { setShopOpen(false); setPhase(GamePhase.SHOWROOM); }}
-                               className="p-2 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white rounded-lg flex items-center gap-2 font-bold shadow-lg transform transition-transform hover:scale-105"
-                           >
-                               <Car size={20} /> Toptancı
-                           </button>
-
-                           <button onClick={() => setShopOpen(false)} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white">
-                               Kapat
-                           </button>
-                      </div>
-                  </div>
-
-                  {/* Tabs */}
-                  <div className="flex p-2 bg-black/20 gap-2 overflow-x-auto">
-                      {['fish', 'plant', 'decoration', 'equipment', 'supply'].map(cat => (
-                          <button 
-                              key={cat}
-                              onClick={() => setShopCategory(cat as any)}
-                              className={`px-4 py-2 rounded-xl text-sm font-bold capitalize transition-colors ${shopCategory === cat ? 'bg-cyan-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
-                          >
-                              {cat === 'fish' ? 'Balıklar' : cat === 'plant' ? 'Bitkiler' : cat === 'decoration' ? 'Dekor' : cat === 'equipment' ? 'Ekipman' : 'Sarf Malzeme'}
-                          </button>
-                      ))}
-                  </div>
-
-                  {/* Items Grid */}
-                  <div className="flex-1 overflow-y-auto p-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 bg-gray-950/50">
-                      {STANDARD_ITEMS.filter(item => item.type === shopCategory).map(item => {
-                           const canAfford = (item.currency === 'gem' ? gameState.gems : gameState.money) >= item.price;
-                           return (
-                               <div key={item.id} className="bg-gray-800 p-4 rounded-xl border border-gray-700 hover:border-cyan-500 transition-all group">
-                                   <div className="h-24 bg-black/40 rounded-lg mb-3 flex items-center justify-center overflow-hidden">
-                                       {/* Simple preview icons */}
-                                       {item.type === 'fish' && <div className="w-8 h-8 rounded-full" style={{ backgroundColor: item.color }}></div>}
-                                       {item.type === 'plant' && <div className="text-green-500">🌿</div>}
-                                       {item.type === 'decoration' && <div className="text-gray-400">🪨</div>}
-                                       {item.type === 'equipment' && <div className="text-blue-400">⚙️</div>}
-                                       {item.type === 'supply' && <div className="text-red-400">💊</div>}
-                                   </div>
-                                   <h3 className="font-bold text-gray-200 text-sm mb-1">{item.name}</h3>
-                                   <div className="flex justify-between items-center mt-2">
-                                       <div className="flex items-center gap-1">
-                                           {item.currency === 'gem' ? <Diamond size={14} className="text-purple-400"/> : <Coins size={14} className="text-yellow-500"/>}
-                                           <span className={`font-bold ${item.currency === 'gem' ? 'text-purple-400' : 'text-yellow-400'}`}>{item.price}</span>
-                                       </div>
-                                       <button 
-                                          onClick={() => buyItem(item)}
-                                          disabled={!canAfford}
-                                          className={`px-3 py-1 rounded text-xs font-bold ${canAfford ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}
-                                       >
-                                           AL
-                                       </button>
-                                   </div>
-                               </div>
-                           )
-                      })}
-                  </div>
-              </div>
-          </div>
+          <Shop3D 
+              onClose={() => setShopOpen(false)}
+              onGoWholesale={() => {
+                  setShopOpen(false);
+                  setPhase(GamePhase.SHOWROOM);
+              }}
+              items={STANDARD_ITEMS}
+              onBuy={buyItem}
+              money={gameState.money}
+              gems={gameState.gems}
+          />
       )}
 
     </div>
